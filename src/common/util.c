@@ -3600,12 +3600,25 @@ tor_process_get_stdout_pipe(process_handle_t *process_handle)
 {
   return process_handle->stdout_pipe;
 }
+
+HANDLE
+tor_process_get_stderr_pipe(process_handle_t *process_handle)
+{
+  return process_handle->stderr_pipe;
+}
 #else
 /* DOCDOC tor_process_get_stdout_pipe */
 FILE *
 tor_process_get_stdout_pipe(process_handle_t *process_handle)
 {
   return process_handle->stdout_handle;
+}
+
+/* DOCDOC tor_process_get_stderr_pipe */
+FILE *
+tor_process_get_stderr_pipe(process_handle_t *process_handle)
+{
+  return process_handle->stderr_handle;
 }
 #endif
 
