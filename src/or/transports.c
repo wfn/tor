@@ -635,8 +635,8 @@ configure_proxy(managed_proxy_t *mp)
     SMARTLIST_FOREACH_BEGIN(proxy_err_output, const char *, line) {
       /* Should we expect any output from stderr to contribute to the proxy
        * config process? (We assume not.) */
-      log_info(LD_GENERAL, "Managed proxy '%s' says (over stderr): '%s'",
-               mp->argv[0], line);
+      log_info(LD_GENERAL, "Managed proxy '%s' says (over stderr): %s",
+               mp->argv[0], escaped(line));
       /* (If we want to just output this stream in one go, we may use
        * get_string_from_pipe() - but this works, too.) */
     } SMARTLIST_FOREACH_END(line);
