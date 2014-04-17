@@ -489,8 +489,10 @@ char *tor_join_win_cmdline(const char *argv[]);
 int tor_process_get_pid(process_handle_t *process_handle);
 #ifdef _WIN32
 HANDLE tor_process_get_stdout_pipe(process_handle_t *process_handle);
+HANDLE tor_process_get_stderr_pipe(process_handle_t *process_handle);
 #else
 FILE *tor_process_get_stdout_pipe(process_handle_t *process_handle);
+FILE *tor_process_get_stderr_pipe(process_handle_t *process_handle);
 #endif
 
 #ifdef _WIN32
