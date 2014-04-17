@@ -105,6 +105,8 @@ create_managed_proxy_environment(const managed_proxy_t *mp);
 
 static INLINE int proxy_configuration_finished(const managed_proxy_t *mp);
 
+static void report_proxy_stderr(managed_proxy_t *mp);
+
 static void handle_finished_proxy(managed_proxy_t *mp);
 static void parse_method_error(const char *line, int is_server_method);
 #define parse_server_method_error(l) parse_method_error(l, 1)
@@ -611,6 +613,11 @@ configure_proxy(managed_proxy_t *mp)
   tor_assert(mp->conf_state != PT_PROTO_INFANT);
   tor_assert(mp->process_handle);
 
+  /* Handle lines from stderr. We have to do this before checking stdout's
+   * <b>stream_status</b>, because we may jump to <em>done</em>, etc. during
+   * that check. We want to first log stderr if there's anything to log. */
+  report_proxy_stderr(mp);
+
   proxy_output =
     tor_get_lines_from_handle(tor_process_get_stdout_pipe(mp->process_handle),
                               &stream_status);
@@ -648,6 +655,42 @@ configure_proxy(managed_proxy_t *mp)
   }
 
   return configuration_finished;
+}
+
+/** Report any output from the stderr of managed proxy <b>mp</b>.
+ *  Log output, and return nothing. */
+static void
+report_proxy_stderr(managed_proxy_t *mp)
+{
+  enum stream_status err_stream_status = 0;
+  smartlist_t *proxy_err_output = NULL;
+
+  proxy_err_output =
+    tor_get_lines_from_handle(tor_process_get_stderr_pipe(mp->process_handle),
+                              &err_stream_status);
+  if (!proxy_err_output) {
+    return;
+  }
+
+  log_notice(LD_GENERAL, "Managed proxy '%s' is giving some output over "
+             "the standard error stream (stderr). This usually means that "
+             "it has encountered some error that I won't be able to "
+             "understand. You should enable INFO-level tor log to see what "
+             "it is saying - when INFO-level log is enabled, look for "
+             "lines with 'report_proxy_stderr' (without quotes).",
+             mp->argv[0]);
+  log_info(LD_GENERAL, "Managed proxy '%s' reports a possible error over "
+           "the standard error stream (stderr) - stderr output follows:",
+           mp->argv[0]);
+  SMARTLIST_FOREACH_BEGIN(proxy_err_output, const char *, line) {
+    /* Should we expect any output from stderr to contribute to the proxy
+     * config process? (We assume not.) */
+    log_info(LD_GENERAL, "Managed proxy '%s' says (over stderr): %s",
+             mp->argv[0], escaped(line));
+  } SMARTLIST_FOREACH_END(line);
+
+  SMARTLIST_FOREACH(proxy_err_output, char *, cp, tor_free(cp));
+  smartlist_free(proxy_err_output);
 }
 
 /** Register server managed proxy <b>mp</b> transports to state */
