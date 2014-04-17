@@ -597,7 +597,10 @@ configure_proxy(managed_proxy_t *mp)
 {
   int configuration_finished = 0;
   smartlist_t *proxy_output = NULL;
+  smartlist_t *proxy_err_output = NULL;
+
   enum stream_status stream_status = 0;
+  enum stream_status err_stream_status = 0;
 
   /* if we haven't launched the proxy yet, do it now */
   if (mp->conf_state == PT_PROTO_INFANT) {
@@ -614,6 +617,31 @@ configure_proxy(managed_proxy_t *mp)
   proxy_output =
     tor_get_lines_from_handle(tor_process_get_stdout_pipe(mp->process_handle),
                               &stream_status);
+  proxy_err_output =
+    tor_get_lines_from_handle(tor_process_get_stderr_pipe(mp->process_handle),
+                              &err_stream_status);
+
+  /* Handle lines from stderr. We have to do this before checking stdout's
+   * <b>stream_status</b>, because we may jump to <em>done</em>, etc. during
+   * that check. We want to first log stderr if there's anything to log. */
+  if (proxy_err_output) {
+    log_notice(LD_GENERAL, "Managed proxy '%s' is giving some output over "
+               "the standard error pipe. This usually means that it has "
+               "encountered some error that I won't be able to understand. "
+               "You should check its log, or enable INFO-level tor log to "
+               "see what it is saying.", mp->argv[0]);
+    log_info(LD_GENERAL, "Managed proxy '%s' reports a possible error over "
+             "stderr - stderr output follows:", mp->argv[0]);
+    SMARTLIST_FOREACH_BEGIN(proxy_err_output, const char *, line) {
+      /* Should we expect any output from stderr to contribute to the proxy
+       * config process? (We assume not.) */
+      log_info(LD_GENERAL, "Managed proxy '%s' says (over stderr): '%s'",
+               mp->argv[0], line);
+      /* (If we want to just output this stream in one go, we may use
+       * get_string_from_pipe() - but this works, too.) */
+    } SMARTLIST_FOREACH_END(line);
+  }
+
   if (!proxy_output) { /* failed to get input from proxy */
     if (stream_status != IO_STREAM_EAGAIN) { /* bad stream status! */
       mp->conf_state = PT_PROTO_BROKEN;
@@ -645,6 +673,11 @@ configure_proxy(managed_proxy_t *mp)
   if (proxy_output) {
     SMARTLIST_FOREACH(proxy_output, char *, cp, tor_free(cp));
     smartlist_free(proxy_output);
+  }
+
+  if (proxy_err_output) {
+    SMARTLIST_FOREACH(proxy_err_output, char *, cp, tor_free(cp));
+    smartlist_free(proxy_err_output);
   }
 
   return configuration_finished;
