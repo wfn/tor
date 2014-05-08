@@ -3267,15 +3267,23 @@ connection_dirserv_add_servers_to_outbuf(dir_connection_t *conn)
     const char *body;
     char *fp = smartlist_pop_last(conn->fingerprint_stack);
     const signed_descriptor_t *sd = NULL;
+    int last = ! smartlist_len(conn->fingerprint_stack);
     if (by_fp) {
       sd = get_signed_descriptor_by_fp(fp, extra, publish_cutoff);
     } else {
       sd = extra ? extrainfo_get_by_descriptor_digest(fp)
         : router_get_by_descriptor_digest(fp);
     }
+    if (!sd) {
+      log_info(LD_DIRSERV, "Serving descriptors: failed to look up "
+               "descriptor for %s.%s", hex_str(fp, DIGEST_LEN),
+               (last) ? " (This is the last digest on the stack.)" : "");
+    } 
     tor_free(fp);
-    if (!sd)
+    if (!sd) {
       continue;
+    }
+
     if (!connection_dir_is_encrypted(conn) && !sd->send_unencrypted) {
       /* we did this check once before (so we could have an accurate size
        * estimate and maybe send a 404 if somebody asked for only bridges on a
@@ -3296,10 +3304,11 @@ connection_dirserv_add_servers_to_outbuf(dir_connection_t *conn)
     }
     body = signed_descriptor_get_body(sd);
     if (conn->zlib_state) {
-      int last = ! smartlist_len(conn->fingerprint_stack);
       connection_write_to_buf_zlib(body, sd->signed_descriptor_len, conn,
                                    last);
       if (last) {
+        log_info(LD_DIRSERV, "Serving descriptors: processed last "
+                 "digest for a compressed descriptor archive.");
         tor_zlib_free(conn->zlib_state);
         conn->zlib_state = NULL;
       }
@@ -3338,13 +3347,22 @@ connection_dirserv_add_microdescs_to_outbuf(dir_connection_t *conn)
          connection_get_outbuf_len(TO_CONN(conn)) < DIRSERV_BUFFER_MIN) {
     char *fp256 = smartlist_pop_last(conn->fingerprint_stack);
     microdesc_t *md = microdesc_cache_lookup_by_digest256(cache, fp256);
+    int last = !smartlist_len(conn->fingerprint_stack);
+    if (!md || !md->body) {
+      log_info(LD_DIRSERV, "Serving microdescriptors: failed to look up "
+               "microdescriptor for %s.%s", hex_str(fp256, DIGEST256_LEN),
+               (last) ? " (This is the last digest on the stack.)" : "");
+    }
     tor_free(fp256);
-    if (!md || !md->body)
+    if (!md || !md->body) {
       continue;
+    }
+
     if (conn->zlib_state) {
-      int last = !smartlist_len(conn->fingerprint_stack);
       connection_write_to_buf_zlib(md->body, md->bodylen, conn, last);
       if (last) {
+        log_info(LD_DIRSERV, "Serving microdescriptors: processed last "
+                 "digest for a compressed microdescriptor archive.");
         tor_zlib_free(conn->zlib_state);
         conn->zlib_state = NULL;
       }
